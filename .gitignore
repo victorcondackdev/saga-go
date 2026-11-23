@@ -1,0 +1,21 @@
+# binaries
+/sagad
+/sagactl
+/bin/
+*.exe
+*.test
+
+# test and profiling output
+*.out
+*.prof
+coverage.*
+
+# local data
+/sagad-data/
+/data/
+
+# editors
+.idea/
+.vscode/
+*.swp
+.DS_Store

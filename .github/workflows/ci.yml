@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.22", "stable"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: gofmt
+        run: test -z "$(gofmt -l . | tee /dev/stderr)"
+      - name: go vet
+        run: go vet ./...
+      - name: go test -race
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - name: coverage
+        run: |
+          go tool cover -func=coverage.out | tail -1
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {sub("%","",$3); print $3}')
+          awk -v t="$total" 'BEGIN { if (t < 88) { print "coverage " t "% is below 88%"; exit 1 } }'
+
+  fuzz:
+    name: fuzz smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: WAL record decoder
+        run: go test ./store/internal/wal -run '^$' -fuzz '^FuzzDecodeRecord$' -fuzztime 15s -fuzzminimizetime 1s
+      - name: WAL store recovery
+        run: go test ./store -run '^$' -fuzz '^FuzzOpenWAL$' -fuzztime 15s -fuzzminimizetime 1s
+
+  bench:
+    name: bench smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go test ./saga -run '^$' -bench . -benchtime 2000x -benchmem
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t saga-go:ci .
